@@ -1,0 +1,112 @@
+
+local function set_atlas(self, geometries, animations)
+	local params = {
+		texture = "/main/spine_boy.texturec",
+		geometries = geometries,
+		animations = animations
+	}
+
+	resource.set_atlas("/main/backing_atlas.a.texturesetc", params)
+
+	self.atlas_data = resource.get_atlas("/main/backing_atlas.a.texturesetc")
+end
+
+local function set_anim(self, id)
+	local anim = self.animations[id]
+
+	local aspect = anim.width / anim.height;
+	local scale = vmath.vector3( (1 / anim.width) * 500 * aspect,  (1 / anim.height) * 500, 1 )
+	go.set_scale(scale, "/go")
+
+	print(anim.id)
+	pprint(self.atlas_data.geometries[id].vertices)
+	
+	sprite.play_flipbook("/go#sprite", anim.id)
+end
+
+function init(self)
+	msg.post(".", "acquire_input_focus")
+
+	-- Load the json and convert to a lua table,
+	-- you can change the backing format any way you want
+	-- but this is the raw metadata from texturepacker
+	local spineboy_json = sys.load_resource("/main/spine_boy.json")
+	local lua_tbl = json.decode(spineboy_json)
+
+	-- Put all the data as-is into tables,
+	-- our atlas structure supports the TP format natively
+	local geometries = {}
+	local animations = {}
+	for k,v in pairs(lua_tbl.frames) do
+
+		local vertices = {}
+		local uvs = {}
+		local indices = {}
+		
+		for _,p in pairs(v.vertices) do
+			table.insert(vertices, p[1])
+			table.insert(vertices, p[2])
+		end
+
+		for _,uv in pairs(v.verticesUV) do
+			table.insert(uvs, uv[1])
+			table.insert(uvs, uv[2])
+		end
+
+		for _,i in pairs(v.triangles) do
+			table.insert(indices, i[1])
+			table.insert(indices, i[2])
+			table.insert(indices, i[3])
+		end
+
+		table.insert(geometries, {
+			vertices = vertices,
+			uvs = uvs,
+			indices = indices
+		})
+
+		-- All the images needs an animation to use,
+		-- so we just create a single aniamtion per image
+		-- from the TP json
+		table.insert(animations, {
+			id = v.filename,
+			width = v.sourceSize.w,
+			height = v.sourceSize.h,
+			frame_start = k,
+			frame_end = k + 1
+		})
+	end
+
+	-- Create the actual atlas
+	set_atlas(self, geometries, animations)
+
+	-- This is just for the preview, not needed to create the actual atlas
+	self.animations = animations
+	self.animation_id = 1
+	
+	set_anim(self, self.animation_id)
+end
+
+function on_input(self, action_id, action)
+	local do_set = false
+	
+	if action_id == hash("LEFT") and action.released then
+		self.animation_id = self.animation_id - 1
+		do_set = true
+	end
+	if action_id == hash("RIGHT") and action.released then
+		self.animation_id = self.animation_id + 1
+		do_set = true
+	end
+
+	if do_set then
+		if self.animation_id < 1 then
+			self.animation_id = #self.animations
+		end
+		if self.animation_id > #self.animations then
+			self.animation_id = 1
+		end
+
+		set_anim(self, self.animation_id)
+	end
+end
